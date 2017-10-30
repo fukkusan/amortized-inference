@@ -8,6 +8,7 @@ from tensorflow.python.framework import dtypes
 import math
 from matplotlib import pyplot as plt
 import pandas as pd
+import matplotlib.mlab as mlab
 
 
 
@@ -52,18 +53,90 @@ class BasicBBVI():
         
         
         
+    # Fit(Training) parameters
+    def Fit(self, x_train):
+        # Initiaize seesion
+        init = tf.global_variables_initializer()
+        sess = tf.Session()
+        sess.run(init)
+        
+        
+        # Update
+        vps_mu_1 = np.array(np.zeros(self.N//self.S), dtype=np.float32)
+        vps_mu_2 = np.array(np.zeros(self.N//self.S), dtype=np.float32)
+        vps_mu_3 = np.array(np.zeros(self.N//self.S), dtype=np.float32)
+        vps_loss = np.array(np.zeros(self.N//self.S), dtype=np.float32)
+        df = pd.DataFrame(index=[], columns=['class1', 'class2', 'class3'])
+        for epoch in range(self.N//self.S):
+            vps = self.VariationalParametersUpdater(rho = 0.1)
+            variational_parameters = sess.run(vps, feed_dict = {
+                self.x: x_train
+            })
+        # for debug
+            print(variational_parameters[1])		# variational_parameters[1] is self.lambda_mu
+            plt.figure(1)
+            vps_mu_1[epoch] = variational_parameters[1][0][0]
+            vps_mu_2[epoch] = variational_parameters[1][0][1]
+            vps_mu_3[epoch] = variational_parameters[1][0][2]
+            q_mu_0 = np.array(np.zeros(50), dtype=np.float32)
+            q_mu_1 = np.array(np.zeros(50), dtype=np.float32)
+            q_mu_2 = np.array(np.zeros(50), dtype=np.float32)
+            x = np.array(np.zeros(50), dtype=np.float32)
+            norm1 = mlab.normpdf(x_train, 0.0, 1.0)
+            norm2 = mlab.normpdf(x_train, 2.0, 1.0)
+            norm3 = mlab.normpdf(x_train, -2.0, 1.0)
+            log_likelihood_p = np.array(np.zeros(10), dtype=np.float32)
+            log_q = np.array(np.zeros(10), dtype=np.float32)
+            epochs = np.array(np.zeros(10), dtype=np.float32)
+            epochs[epoch] = epoch
+            for i in range(50):
+                x_element = -5.0 + i/10*5
+                x[i] = x_element
+                q_mu_0[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][0] 
+                q_mu_1[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][1] 
+                q_mu_2[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][2] 
+            log_likelihood_p[epoch] = np.mean(self.log_p.eval(session=sess))
+            log_q[epoch] = np.mean(self.log_p.eval(session=sess))
+            plt.plot([-2.0, -2.0, -2.0], [-1.0, 0.0, 1.0], linestyle="-.", color="b")
+            plt.plot([0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], linestyle="-.", color="g")
+            plt.plot([2.0, 2.0, 2.0], [-1.0, 0.0, 1.0], linestyle="-.", color="r")
+            plt.plot(x, q_mu_0, color="b", label="q(mu_1|lambda_mu_1)")
+            plt.plot(x, q_mu_1, color="g", label="q(mu_2|lambda_mu_2)")
+            plt.plot(x, q_mu_2, color="r", label="q(mu_3|lambda_mu_3)")
+            plt.scatter(x_train, norm1, color="g")
+            plt.scatter(x_train, norm2, color="r")
+            plt.scatter(x_train, norm3, color="b")
+            plt.xlim([-5.0, 5.0])
+            plt.ylim([0.0, 1.0])
+            plt.title("q(mu|lambda_mu)")
+            plt.legend()
+            plt.show()
+            plt.clf()
+            plt.close()
+            se = pd.Series([vps_mu_1[epoch], vps_mu_2[epoch], vps_mu_3[epoch]], index=df.columns)
+            df = df.append(se, ignore_index=True)
+        plt.plot(epochs, log_likelihood_p, label="log_p")
+        plt.plot(epochs, log_q, label="log_q")
+        plt.title("log_p and log_q")
+        plt.legend()
+        plt.show()
+        df.to_csv("output_lambda_mu.csv", index=False)
+    
+    
+    
     # Inference variational parameters
     # Update function for variational parameters
     def VariationalParametersUpdater(self, rho):
         s = 0
         # Sampling and Logarithmic distributions
-        self.log_p_x = list(np.ones(self.S))
-        self.log_p_z = list(np.ones(self.S))
-        self.log_p_mu = list(np.ones(self.S))
-        self.log_p_pi = list(np.ones(self.S))
-        self.log_q_pi = list(np.ones(self.S))
-        self.log_q_mu = list(np.ones(self.S))
-        self.log_q_z = list(np.ones(self.S))
+        self.log_p_x = list( np.ones(self.S, dtype=np.float32) )
+        self.log_p_z = list( np.ones(self.S, dtype=np.float32) )
+        self.log_p_mu = list( np.ones(self.S, dtype=np.float32) )
+        self.log_p_pi = list( np.ones(self.S, dtype=np.float32) )
+        self.log_q_pi = list( np.ones(self.S, dtype=np.float32) )
+        self.log_q_mu = list( np.ones(self.S, dtype=np.float32) )
+        self.log_q_z = list( np.ones(self.S, dtype=np.float32) )
+        
         
         
         while(s < self.S):
@@ -72,11 +145,12 @@ class BasicBBVI():
                 self.DistributionsUpdater()
             
             self.log_p_x[s] = tf.reduce_sum( self.logpx )
-            self.log_p_z[s] = tf.reduce_sum( self.p_z.log_prob(self.p_z.sample(sample_shape=[1]))[0] )
+            #self.log_p_z[s] = tf.reduce_sum( self.p_z.log_prob(self.p_z.sample(sample_shape=[1]))[0] )
             self.log_p_mu[s] = tf.reduce_sum( self.p_mu.log_prob(self.p_mu.sample(sample_shape=[1]))[0][0] )
             self.log_p_pi[s] = self.p_pi.log_prob(self.p_pi.sample(sample_shape=[1]))[0]
             
-            self.log_dirichlet = self.q_pi.log_prob(self.q_pi.sample(sample_shape=[self.K]))[0]
+            #self.log_dirichlet = self.q_pi.log_prob(self.q_pi.sample(sample_shape=[self.K]))[0]
+            self.log_dirichlet = self.q_pi.log_prob(self.q_pi.sample(sample_shape=[1]))[0]
             self.log_categorical = self.q_z.log_prob(self.q_z.sample(sample_shape=[1]))[0]
             self.log_gauss = self.q_mu.log_prob(self.q_mu.sample(sample_shape=[1]))[0]
             self.log_q_pi[s] = self.log_dirichlet
@@ -86,8 +160,8 @@ class BasicBBVI():
             s = s + 1
         
         
-        self.log_p = tf.add( tf.add( tf.add(self.log_p_x, self.log_p_z), self.log_p_pi ), self.log_p_mu ) 
-        self.log_q = tf.add( tf.add( self.log_q_z,  self.log_q_mu), self.log_q_pi ) 
+        self.log_p = tf.add( tf.add( tf.add( tf.convert_to_tensor(self.log_p_x), tf.convert_to_tensor(self.log_p_z) ), tf.convert_to_tensor(self.log_p_pi) ), tf.convert_to_tensor(self.log_p_mu) ) 
+        self.log_q = tf.add( tf.add( tf.convert_to_tensor(self.log_q_z),  tf.convert_to_tensor(self.log_q_mu) ), tf.convert_to_tensor(self.log_q_pi) ) 
         self.log_loss = tf.subtract( self.log_p, self.log_q )
         
         
@@ -112,19 +186,19 @@ class BasicBBVI():
         
         # Update variational parameters
         self.lambda_pi = tf.add(self.lambda_pi, tf.multiply(rho, self.sample_mean_pi))
-        self.lambda_pi = tf.cond( tf.logical_or( tf.greater( tf.reduce_sum(self.lambda_pi), 1.00 ), tf.less( tf.reduce_sum(self.lambda_pi), 0.0 ) ), lambda: self.ConstraintMethod( self.lambda_pi ), lambda: self.lambda_pi )
-        #self.lambda_pi = tf.cond( tf.less( tf.reduce_sum(self.lambda_pi), 0.0 ), lambda: self.ConstraintMethod( self.lambda_pi ), lambda: self.lambda_pi )
+        #self.lambda_pi = tf.cond( tf.logical_or( tf.greater( tf.reduce_sum(self.lambda_pi), 10.00 ), tf.less( tf.reduce_sum(self.lambda_pi), 0.0 ) ), lambda: self.ConstraintMethod( self.lambda_pi ), lambda: self.lambda_pi )
+        self.lambda_pi = tf.cond( tf.less_equal( tf.reduce_sum(self.lambda_pi), 0.0 ), lambda: tf.abs( self.lambda_pi ), lambda: self.lambda_pi )
         
         self.lambda_mu = tf.add(self.lambda_mu, tf.multiply(rho, self.sample_mean_mu))
-        self.lambda_mu = tf.cond( tf.logical_or( tf.greater( tf.reduce_sum(self.lambda_mu[0]), 2.00 ), tf.less( tf.reduce_sum(self.lambda_mu[0]), -2.00 ) ), lambda: self.prev_lambda_mu, lambda: self.lambda_mu )
+        #self.lambda_mu = tf.cond( tf.logical_or( tf.greater( tf.reduce_sum(self.lambda_mu[0]), 1.00 ), tf.less( tf.reduce_sum(self.lambda_mu[0]), -1.00 ) ), lambda: self.prev_lambda_mu, lambda: self.lambda_mu )
         
         self.lambda_z = tf.add(self.lambda_z, tf.multiply(rho, self.sample_mean_z))
         lambda_z = []
         lambda_z.append( tf.split(self.lambda_z, self.N, 0) )
         n=0
         while(n < self.N):
-            lambda_z[0][n] = tf.cond( tf.logical_or( tf.greater( tf.reduce_sum( lambda_z[0][n] ), 1.00000001 ), tf.less( tf.reduce_sum( lambda_z[0][n] ), 0.99999999 ) ), lambda: self.ConstraintMethod( lambda_z[0][n] ), lambda: lambda_z[0][n] )
-            #lambda_z[0][n] = tf.cond( tf.not_equal( tf.reduce_sum( lambda_z[0][n] ), 1.0 ), lambda: self.ConstraintMethod( lambda_z[0][n] ), lambda: lambda_z[0][n] )
+            #lambda_z[0][n] = tf.cond( tf.logical_or( tf.greater( tf.reduce_sum( lambda_z[0][n] ), 1.00000001 ), tf.less( tf.reduce_sum( lambda_z[0][n] ), 0.99999999 ) ), lambda: self.ConstraintMethod( lambda_z[0][n] ), lambda: lambda_z[0][n] )
+            lambda_z[0][n] = tf.cond( tf.not_equal( tf.reduce_sum( lambda_z[0][n] ), 1.0 ), lambda: self.ConstraintMethod( lambda_z[0][n] ), lambda: lambda_z[0][n] )
             n = n + 1
         if(n == self.N):
             self.lambda_z = tf.concat(lambda_z[0], 0)
@@ -153,62 +227,6 @@ class BasicBBVI():
     
     
     
-    # Fit(Training) parameters
-    def Fit(self, x_train):
-        # Initiaize seesion
-        init = tf.global_variables_initializer()
-        sess = tf.Session()
-        sess.run(init)
-        
-        
-        # Update
-        vps_mu_1 = np.array(np.zeros(self.N//self.S))
-        vps_mu_2 = np.array(np.zeros(self.N//self.S))
-        vps_mu_3 = np.array(np.zeros(self.N//self.S))
-        vps_loss = np.array(np.zeros(self.N//self.S))
-        df = pd.DataFrame(index=[], columns=['class1', 'class2', 'class3'])
-        for epoch in range(self.N//self.S):
-            vps = self.VariationalParametersUpdater(rho = 0.1)
-            variational_parameters = sess.run(vps, feed_dict = {
-                self.x: x_train
-            })
-            #variational_parameters_loss = sess.run(self.log_loss, feed_dict = {
-            #    self.x: x_train
-            #})
-        # for debug
-            print(variational_parameters[1])		# variational_parameters[1] is self.lambda_mu
-            plt.figure(1)
-            vps_mu_1[epoch] = variational_parameters[1][0][0]
-            vps_mu_2[epoch] = variational_parameters[1][0][1]
-            vps_mu_3[epoch] = variational_parameters[1][0][2]
-            #vps_loss[epoch] = variational_parameters_loss[0]
-            q_mu_0 = np.array(np.zeros(10))
-            q_mu_1 = np.array(np.zeros(10))
-            q_mu_2 = np.array(np.zeros(10))
-            x = np.array(np.zeros(10))
-            for i in range(10):
-                x_element = -5.0 + i/10*10
-                x[i] = x_element
-                q_mu_0[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][0] 
-                q_mu_1[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][1] 
-                q_mu_2[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][2] 
-            plt.plot([-2.0, -2.0, -2.0], [-1.0, 0.0, 1.0], linestyle="-.", color="b")
-            plt.plot([0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], linestyle="-.", color="g")
-            plt.plot([2.0, 2.0, 2.0], [-1.0, 0.0, 1.0], linestyle="-.", color="r")
-            plt.plot(x, q_mu_0, "b")
-            plt.plot(x, q_mu_1, "g")
-            plt.plot(x, q_mu_2, "r")
-            plt.xlim([-5.0, 5.0])
-            plt.ylim([0.0, 1.0])
-            plt.show()
-            plt.clf()
-            plt.close()
-            se = pd.Series([vps_mu_1[epoch], vps_mu_2[epoch], vps_mu_3[epoch]], index=df.columns)
-            df = df.append(se, ignore_index=True)
-        df.to_csv("output_lambda_mu.csv", index=False)
-    
-    
-    
     # Update distributions
     def DistributionsUpdater(self):
         # Variational approximation model
@@ -218,15 +236,17 @@ class BasicBBVI():
         
         
         # Generative model
-        self.p_pi = tf.contrib.distributions.Dirichlet(self.gamma)			# sample_shape=[self.K]
+        self.p_pi = tf.contrib.distributions.Dirichlet(self.gamma)						# sample_shape=[self.K]
         self.p_mu = tf.contrib.distributions.Normal(self.alpha_mean, self.alpha_var)	# sample_shape=[self.D, self.K]
         if self.update_counter > 0:
             self.pi_gene = self.q_pi.sample(sample_shape=[1])[0]
-            self.mu_gene = self.q_mu.sample(sample_shape=[1])[0][0]
+            #self.mu_gene = self.q_mu.sample(sample_shape=[1])[0][0]
+            self.mu_gene = self.q_mu.sample(sample_shape=[1])[0]
         else :
             self.pi_gene = self.p_pi.sample(sample_shape=[1])[0]
-            self.mu_gene = self.p_mu.sample(sample_shape=[1])[0][0]
-        self.p_z = tf.contrib.distributions.Categorical( self.pi_gene )			# sample_shape=[self.N, self.K]
+            #self.mu_gene = self.p_mu.sample(sample_shape=[1])[0][0]
+            self.mu_gene = self.p_mu.sample(sample_shape=[1])[0]
+        self.p_z = tf.contrib.distributions.Categorical( self.pi_gene )					# sample_shape=[self.N, self.K]
         self.generative_gauss = tf.contrib.distributions.Normal(self.mu_gene, tf.ones(self.K))
         self.log_gene_gauss = self.generative_gauss.log_prob(self.generative_gauss.sample(sample_shape=[self.N]))
         self.logpx = tf.reduce_sum( tf.multiply( tf.to_float( self.p_z.sample(sample_shape=[self.N, self.K]) ), self.log_gene_gauss ), axis=1 )		#sample_shape=[self.N]
