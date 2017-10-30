@@ -1,3 +1,7 @@
+# Basic_BBVI_for_1-dim_GMM_byTF_ver9_gc_test.py -> Dsp profile
+
+
+
 # Library
 import numpy as np
 import tensorflow as tf
@@ -9,298 +13,517 @@ import math
 from matplotlib import pyplot as plt
 import pandas as pd
 import matplotlib.mlab as mlab
+import os
+import io
+import time
+from tensorflow.python import debug as tf_debug
+import Input_data as inp
+
+
+#import os			#hashimoto
+import psutil		#hashimoto
+import time			#hashimoto
+import gc			#hashimoto
 
 
 
+current_process = psutil.Process(os.getpid())		#hashimoto
 
-class BasicBBVI():
-    # Constractor
-    def __init__(self, num_data, num_cluster, vector_dim, num_sample, alpha_mean, alpha_var, gamma):
-        # Parameters
-        # Size parameters
-        self.N = num_data
-        self.K = num_cluster
-        self.D = vector_dim
-        self.S = num_sample
-        
-        # Input
-        self.x = tf.placeholder(tf.float32, shape = [self.N, self.D])
-        
-        # Hyper parameters
-        self.alpha_mean = tf.constant(alpha_mean, shape=[self.D, self.K], dtype=tf.float32)
-        #self.alpha_mean = tf.constant(x_mean, shape=[self.D, self.K], dtype=tf.float32)
-        self.alpha_var = tf.constant(alpha_var, shape=[1, 1], dtype=tf.float32)
-        self.gamma = tf.constant(gamma, shape=[self.K], dtype=tf.float32)
-        
-        # Variational parameters
-        self.lambda_pi = tf.Variable(tf.ones([self.K])/self.K, dtype=tf.float32, trainable=True, name='lambda_pi')
-        self.lambda_mu = tf.Variable(tf.truncated_normal([self.D, self.K], mean = 0.0, stddev=2.0), dtype=tf.float32, trainable=True, name='lambda_mu')
-        self.lambda_z = tf.Variable(tf.ones([self.N, self.K])/self.K, dtype=tf.float32, trainable=True, name='lambda_z')
-        
-        
-        # Update count
-        self.update_counter = 0
-        
-        
-        # initialize distributions
-        self.DistributionsUpdater()
-        
-        
-        # Save previous variational parameters
-        self.prev_lambda_pi = tf.ones(self.K)/self.K
-        self.prev_lambda_mu = tf.truncated_normal([self.D, self.K], mean = 0.0, stddev=2.0)
-        self.prev_lambda_z = tf.ones([self.N, self.K])/self.K
-        
-        
-        
-    # Update distributions
-    def DistributionsUpdater(self):
-        # Variational approximation model
-        self.q_pi = tf.contrib.distributions.Dirichlet(self.lambda_pi)					# sample_shape=[self.K]
-        self.q_mu = tf.contrib.distributions.Normal(self.lambda_mu, tf.ones(self.K))	# sample_shape=[self.D, self.K]
-        self.q_z = tf.contrib.distributions.OneHotCategorical(self.lambda_z)					# sampe_shape=[self.N]
-        
-        
-        # Generative model
-        self.p_pi = tf.contrib.distributions.Dirichlet(self.gamma)						# sample_shape=[self.K]
-        self.p_mu = tf.contrib.distributions.Normal(self.alpha_mean, self.alpha_var)	# sample_shape=[self.D, self.K]
-        if self.update_counter > 0:
-            self.pi_gene = self.q_pi.sample(sample_shape=[1])[0]
-            self.mu_gene = self.q_mu.sample(sample_shape=[1])[0]
-        else :
-            self.pi_gene = self.p_pi.sample(sample_shape=[1])[0]
-            self.mu_gene = self.p_mu.sample(sample_shape=[1])[0]
-        self.p_z = tf.contrib.distributions.OneHotCategorical( self.pi_gene )					# sample_shape=[self.N, self.K]
-        self.generative_gauss = tf.contrib.distributions.Normal(self.mu_gene, tf.ones(self.K))
-        self.log_gene_gauss = self.generative_gauss.log_prob(self.generative_gauss.sample(sample_shape=[self.N]))
-        #self.logpx = tf.reduce_sum( tf.multiply( tf.to_float( self.p_z.sample(sample_shape=[self.N, self.K]) ), self.log_gene_gauss ), axis=1 )		#sample_shape=[self.N, self.K]
-        self.logpx = tf.reduce_sum( tf.multiply( tf.to_float( self.p_z.sample(sample_shape=[self.K]) ), self.log_gene_gauss ), axis=1 )		#sample_shape=[self.N, self.K]
-        
-        
-        
-        # Fit(Training) parameters
-    def Fit(self, x_train):
-        # Initiaize seesion
-        init = tf.global_variables_initializer()
-        sess = tf.Session()
-        sess.run(init)
-        
-        
-        # Update
-        vps_mu_1 = np.array(np.zeros(self.N//self.S), dtype=np.float32)
-        vps_mu_2 = np.array(np.zeros(self.N//self.S), dtype=np.float32)
-        vps_mu_3 = np.array(np.zeros(self.N//self.S), dtype=np.float32)
-        df = pd.DataFrame(index=[], columns=['class1', 'class2', 'class3'])
-        for epoch in range(self.N//self.S):
-            vps = self.VariationalParametersUpdater(rho = 0.1)
-            vps = self.Care()
-            variational_parameters = sess.run(vps, feed_dict = {
-                self.x: x_train
-            })
-        # for debug
-            print(variational_parameters[1])		# variational_parameters[1] is self.lambda_mu
-            plt.figure(1)
-            vps_mu_1[epoch] = variational_parameters[1][0][0]
-            vps_mu_2[epoch] = variational_parameters[1][0][1]
-            vps_mu_3[epoch] = variational_parameters[1][0][2]
-            q_mu_0 = np.array(np.zeros(20), dtype=np.float32)
-            q_mu_1 = np.array(np.zeros(20), dtype=np.float32)
-            q_mu_2 = np.array(np.zeros(20), dtype=np.float32)
-            x = np.array(np.zeros(20), dtype=np.float32)
-            norm1 = mlab.normpdf(x_train, 0.0, 1.0)
-            norm2 = mlab.normpdf(x_train, 2.0, 1.0)
-            norm3 = mlab.normpdf(x_train, -2.0, 1.0)
-            log_likelihood_p = np.array(np.zeros(10), dtype=np.float32)
-            log_q = np.array(np.zeros(10), dtype=np.float32)
-            epochs = np.array(np.zeros(10), dtype=np.float32)
-            epochs[epoch] = epoch
-            for i in range(20):
-                x_element = -5.0 + i/10*5
-                x[i] = x_element
-                q_mu_0[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][0] 
-                q_mu_1[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][1] 
-                q_mu_2[i] =  self.q_mu.prob( x_element ).eval(session=sess)[0][2] 
-            log_likelihood_p[epoch] = np.mean(self.log_p.eval(session=sess))
-            log_q[epoch] = np.mean(self.log_p.eval(session=sess))
-            plt.plot([-2.0, -2.0, -2.0], [-1.0, 0.0, 1.0], linestyle="-.", color="b")
-            plt.plot([0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], linestyle="-.", color="g")
-            plt.plot([2.0, 2.0, 2.0], [-1.0, 0.0, 1.0], linestyle="-.", color="r")
-            plt.plot(x, q_mu_0, color="b", label="q(mu_1|lambda_mu_1)")
-            plt.plot(x, q_mu_1, color="g", label="q(mu_2|lambda_mu_2)")
-            plt.plot(x, q_mu_2, color="r", label="q(mu_3|lambda_mu_3)")
-            plt.scatter(x_train, norm1, color="g")
-            plt.scatter(x_train, norm2, color="r")
-            plt.scatter(x_train, norm3, color="b")
-            plt.xlim([-5.0, 5.0])
-            plt.ylim([0.0, 1.0])
-            plt.title("q(mu|lambda_mu)")
-            plt.legend()
-            plt.show()
-            del q_mu_0
-            del q_mu_1
-            del q_mu_2
-            del x
-            plt.clf()
-            plt.close()
-            se = pd.Series([vps_mu_1[epoch], vps_mu_2[epoch], vps_mu_3[epoch]], index=df.columns)
-            df = df.append(se, ignore_index=True)
-        plt.plot(epochs, log_likelihood_p, label="log_p")
-        plt.plot(epochs, log_q, label="log_q")
-        plt.title("log_p and log_q")
+
+
+# Projected Gradient Method
+def PGMethod(vector_subspace, element_numbers):
+    normal_vector = tf.ones(element_numbers)
+    coefficient = tf.reduce_sum( tf.multiply(normal_vector, vector_subspace) )
+    norm = tf.norm(normal_vector)
+    oriented_vector = tf.multiply( coefficient, tf.divide(normal_vector, norm) )
+    element_sum = tf.reduce_sum( tf.abs(oriented_vector) )
+    vector_constrainted = tf.divide( oriented_vector, element_sum )
+    
+    
+    return vector_constrainted
+
+
+
+# Evidence Lower Bound
+def ELBO(log_p, log_q):
+    expectation_log_p_by_q = np.mean(log_p)
+    expectation_log_q_by_q = np.mean(log_q)
+    elbo = expectation_log_p_by_q - expectation_log_q_by_q
+    
+    
+    return elbo
+
+
+
+# Input data
+N = 500  	# number of data points
+K = 3    	# number of components
+D = 1     	# dimensionality of data
+S = 100		# sample
+_alpha = 0.0
+_beta = np.sqrt(0.1)
+_gamma = 1.0
+
+input_data = inp.Input()
+x = input_data[0]
+x_mean = input_data[1]
+#sample_x1 = nprand.normal(_alpha, _beta, int(float(N)*0.7))		# Mixture ratio pi_1=0.7
+#sample_x2 = nprand.normal(_alpha+1.0, _beta, int(float(N)*0.2))	# Mixture ratio pi_2=0.2
+#sample_x3 = nprand.normal(_alpha-1.0, _beta, int(float(N)*0.1))	# Mixture ratio pi_3=0.1
+#x = np.reshape( np.concatenate( [np.concatenate([sample_x1, sample_x2]), sample_x3] ), (N, D) )
+#
+#x_mean = np.mean(x)
+
+
+
+# Constractor
+# Parameters
+# Input
+X = tf.placeholder(tf.float32, shape = [N, D])
+
+# Hyper parameters
+alpha_mean = tf.constant(x_mean, shape=[D, K], dtype=tf.float32)
+alpha_var = tf.constant(_beta, shape=[D, K], dtype=tf.float32)
+gamma = tf.constant(_gamma, shape=[K], dtype=tf.float32)
+
+# Variational parameters
+lambda_pi = tf.Variable( tf.ones([K])*K, dtype=tf.float32, trainable=True, name='lambda_pi' )
+#lambda_mu = tf.Variable( tf.truncated_normal([D, K], mean = 1.0, stddev=tf.sqrt(0.1) ), dtype=tf.float32, trainable=True, name='lambda_mu' )
+lambda_mu = tf.Variable( tf.ones([D, K]), dtype=tf.float32, trainable=True, name='lambda_mu' )
+lambda_z = tf.Variable( tf.ones([N, K])/K, dtype=tf.float32, trainable=True, name='lambda_z' )
+
+# Update count
+update_counter = tf.Variable( tf.zeros(1), dtype=tf.float32, trainable=True, name='update_counter' )
+
+# Save previous variational parameters
+prev_lambda_pi = tf.Variable( tf.ones(K)/K, dtype=tf.float32 )
+#prev_lambda_mu = tf.Variable( tf.truncated_normal( [D, K], mean = 1.0, stddev=tf.sqrt(0.1) ), dtype=tf.float32 )
+prev_lambda_mu = tf.Variable( tf.ones( [D, K] ), dtype=tf.float32 )
+prev_lambda_z = tf.Variable( tf.ones([N, K])/K, dtype=tf.float32 )
+
+# Constants
+num_epochs = 1001
+num_samples = 100
+
+# learning rate
+rho = 0.1
+
+
+# initialize distributions
+# Variational approximation model
+q_pi = tf.contrib.distributions.Dirichlet(lambda_pi)				# sample_shape=[K]
+q_mu = tf.contrib.distributions.Normal(lambda_mu, tf.ones(K))		# sample_shape=[D, K]
+q_z = tf.contrib.distributions.OneHotCategorical(lambda_z)			# sampe_shape=[N]
+
+# Generative model
+p_pi = tf.contrib.distributions.Dirichlet(gamma)					# sample_shape=[K]
+p_mu = tf.contrib.distributions.Normal(alpha_mean, alpha_var)		# sample_shape=[D, K]
+pi_gene = p_pi.sample(sample_shape=[1])[0]
+mu_gene = p_mu.sample(sample_shape=[1])[0]
+print("initial")
+p_z = tf.contrib.distributions.OneHotCategorical( pi_gene )			# sample_shape=[N, K]
+generative_gauss = tf.contrib.distributions.Normal(mu_gene, tf.ones(K))
+
+
+# Inference variational parameters
+#Sampling
+sample_gene_gauss = tf.Variable( tf.zeros([S, D, K]) )
+sample_gene_gauss = tf.assign( sample_gene_gauss, generative_gauss.sample(sample_shape=[S]) )
+sample_p_mu = tf.Variable( tf.zeros([S, D, K]) )
+sample_p_mu = tf.assign( sample_p_mu, p_mu.sample(sample_shape=[S]) )
+sample_p_z = tf.Variable( tf.zeros([S, K]) )
+sample_p_z = tf.assign( sample_p_z, tf.to_float( p_z.sample(sample_shape=[S]) ) )
+sample_p_pi = tf.Variable( tf.zeros([S, K]) )
+sample_p_pi = tf.assign( sample_p_pi, p_pi.sample(sample_shape=[S]) )
+sample_q_mu = tf.Variable( tf.zeros([S, D, K]) )
+sample_q_mu = tf.assign( sample_q_mu, q_mu.sample(sample_shape=[S]) )
+sample_q_z = tf.Variable( tf.zeros([S, N, K]) )
+sample_q_z = tf.assign( sample_q_z, tf.to_float( q_z.sample(sample_shape=[S]) ) )
+sample_q_pi = tf. Variable( tf.zeros([S, K]) )
+sample_q_pi = tf.assign( sample_q_pi, q_pi.sample(sample_shape=[S]) )
+
+
+# logarithmic distributions
+log_gene_gauss = generative_gauss.log_prob(sample_gene_gauss)
+logpx = tf.reduce_sum( tf.multiply( tf.to_float( sample_p_z ), log_gene_gauss ), axis=1 )					#sample_shape=[N]
+log_p_x = tf.reduce_sum( logpx, axis=1 )
+log_p_mu = tf.reshape( tf.reduce_sum( p_mu.log_prob( sample_p_mu ), axis=2 ), shape=[S] )
+log_p_pi = p_pi.log_prob( sample_p_pi )
+log_p_z = p_z.log_prob( sample_p_z )
+log_dirichlet = q_pi.log_prob( sample_q_pi )
+log_categorical = q_z.log_prob( sample_q_z )
+log_gauss = q_mu.log_prob( sample_q_mu )
+log_q_pi = log_dirichlet 
+log_q_mu = tf.reshape( tf.reduce_sum( log_gauss, axis=2 ), shape=[S] )
+log_q_z = tf.reduce_sum( log_categorical, axis=1 )
+
+log_p = tf.add( tf.add( tf.add( log_p_x, log_p_z ), log_p_pi ), log_p_mu ) 
+log_q = tf.add( tf.add( log_q_z, log_q_mu ), log_q_pi ) 
+log_loss = tf.subtract( log_p, log_q )
+
+
+# Gradient
+grad_q_pi = []
+grad_q_mu = []
+grad_q_z = []
+for i in range(S):
+    grad_q_pi.append( tf.gradients(log_q[i], lambda_pi) )
+    grad_q_mu.append( tf.gradients(log_q[i], lambda_mu) )
+    grad_q_z.append( tf.gradients(log_q[i], lambda_z) )
+grad_q_pi = tf.convert_to_tensor(grad_q_pi)
+grad_q_mu = tf.convert_to_tensor(grad_q_mu)
+grad_q_z = tf.convert_to_tensor(grad_q_z)
+test= tf.gradients(q_mu.log_prob( sample_q_mu ), lambda_mu)
+
+# Sample mean(Montecarlo Approximation)
+element_wise_product_pi = []
+element_wise_product_mu = []
+element_wise_product_z = []
+for j in range(S):
+    element_wise_product_pi.append( tf.multiply(grad_q_pi[j], log_loss[j]) )
+    element_wise_product_mu.append( tf.multiply(grad_q_mu[j], log_loss[j]) )
+    element_wise_product_z.append( tf.multiply(grad_q_z[j], log_loss[j]) )
+sample_mean_pi = tf.reduce_mean( element_wise_product_pi, axis = 0 )[0]
+sample_mean_mu = tf.reduce_mean( element_wise_product_mu, axis = 0 )[0]
+sample_mean_z = tf.reduce_mean( element_wise_product_z, axis = 0 )[0]
+
+
+# Update variational parameters
+lambda_pi = tf.assign(lambda_pi, tf.add(lambda_pi, tf.multiply(rho, sample_mean_pi)) )
+lambda_mu = tf.assign(lambda_mu, tf.add(lambda_mu, tf.multiply(rho, sample_mean_mu)) )
+lambda_z = tf.assign(lambda_z, tf.add(lambda_z, tf.multiply(rho, sample_mean_z)) )
+
+
+
+# Care Values
+_lambda_pi = []
+_lambda_pi.append( tf.split(lambda_pi, K, 0) )
+k=0
+while(k < K):
+    _lambda_pi[0][k] = tf.cond( tf.less_equal( _lambda_pi[0][k][0], 0.0 ), lambda: tf.abs( tf.multiply(0.5, _lambda_pi[0][k]) ), lambda: _lambda_pi[0][k] )
+    k = k + 1
+if(k == K):
+    lambda_pi = tf.concat(_lambda_pi[0], 0)
+del _lambda_pi[:]
+gc.collect()
+
+
+_lambda_z = []
+_lambda_z.append( tf.split(lambda_z, N, 0) )
+n=0
+while(n < N):
+    k=0
+    while(k < K):
+        #tf.less_equal( lambda_z[0][n][0][k], 0.0 )
+        _lambda_z[0][n] = tf.cond( tf.less_equal( _lambda_z[0][n][0][k], 0.0 ), lambda: PGMethod(_lambda_z[0][n], [1, K]), lambda: _lambda_z[0][n] )
+        k = k + 1
+    _lambda_z[0][n] = tf.cond( tf.logical_or( tf.less_equal( tf.reduce_sum( _lambda_z[0][n] ), 0.9999999 ), tf.greater_equal( tf.reduce_sum( _lambda_z[0][n] ), 1.0000001 ) ), lambda: PGMethod( _lambda_z[0][n], [1, K] ), lambda: _lambda_z[0][n] )
+    n = n + 1
+if(n == N):
+    lambda_z = tf.concat(_lambda_z[0], 0)
+del _lambda_z[:]
+gc.collect()
+
+
+# Deal with nan and inf
+for i in range(K):
+    inf_pi_msg = tf.cond( tf.equal( tf.is_inf(lambda_pi)[i], True ), lambda: True, lambda: False )
+    if inf_pi_msg == True:
+        print("lambda_pi is inf")
+    lambda_pi = tf.cond( tf.equal( tf.is_inf(lambda_pi)[i], True ), lambda: prev_lambda_pi, lambda: lambda_pi )
+    nan_pi_msg = tf.cond( tf.equal( tf.is_nan(lambda_pi)[i], True ), lambda: True, lambda: False )
+    if nan_pi_msg == True:
+        print("lambda_pi is nan")
+    lambda_pi = tf.cond( tf.equal( tf.is_nan(lambda_pi)[i], True ), lambda: prev_lambda_pi, lambda: lambda_pi ) 
+    inf_mu_msg = tf.cond( tf.equal( tf.is_inf(lambda_mu)[0][i], True ), lambda: True, lambda: False )
+    if inf_mu_msg == True:
+        print("lambda_mu is inf")
+    lambda_mu = tf.cond( tf.equal( tf.is_inf(lambda_mu)[0][i], True ), lambda: prev_lambda_mu, lambda: lambda_mu ) 
+    nan_mu_msg = tf.cond( tf.equal( tf.is_nan(lambda_mu)[0][i], True ), lambda: True, lambda: False )
+    if nan_mu_msg == True:
+        print("lambda_mu is nan")
+    lambda_mu = tf.cond( tf.equal( tf.is_nan(lambda_mu)[0][i], True ), lambda: prev_lambda_mu, lambda: lambda_mu ) 
+for j in range(N):
+    for m in range(K):
+        inf_z_msg = tf.cond( tf.equal( tf.is_inf(lambda_z[j][m]), True ), lambda: True, lambda: False )
+        if inf_z_msg == True:
+            print("lambda_z is inf")
+        lambda_z = tf.cond( tf.equal( tf.is_inf(lambda_z[j][m]), True ), lambda: prev_lambda_z, lambda: lambda_z ) 
+        nan_z_msg = tf.cond( tf.equal( tf.is_nan(lambda_z[j][m]), True ), lambda: True, lambda: False )
+        if nan_z_msg == True:
+            print("lambda_z is nan")
+        lambda_z = tf.cond( tf.equal( tf.is_nan(lambda_z[j][m]), True ), lambda: prev_lambda_z, lambda: lambda_z ) 
+
+# Previous lambda
+prev_lambda_pi = tf.assign( prev_lambda_pi, lambda_pi )
+prev_lambda_mu = tf.assign( prev_lambda_mu, lambda_mu )
+prev_lambda_z = tf.assign( prev_lambda_z, lambda_z )
+
+
+# Update Distributions
+# Variational approximation model
+q_pi = tf.contrib.distributions.Dirichlet(lambda_pi)				# sample_shape=[K]
+q_mu = tf.contrib.distributions.Normal(lambda_mu, tf.ones(K))		# sample_shape=[D, K]
+q_z = tf.contrib.distributions.OneHotCategorical(lambda_z)			# sampe_shape=[N]
+
+# Generative model
+p_pi = tf.contrib.distributions.Dirichlet(gamma)					# sample_shape=[K]
+p_mu = tf.contrib.distributions.Normal(alpha_mean, alpha_var)		# sample_shape=[D, K]
+pi_gene = tf.cond( tf.greater(update_counter[0], 0.0), lambda: q_pi.sample(sample_shape=[1])[0], lambda: p_pi.sample(sample_shape=[1])[0] )
+mu_gene = tf.cond( tf.greater(update_counter[0], 0.0), lambda: q_mu.sample(sample_shape=[1])[0], lambda: p_mu.sample(sample_shape=[1])[0] )
+print("not initial")
+p_z = tf.contrib.distributions.OneHotCategorical( pi_gene )			# sample_shape=[N, K]
+generative_gauss = tf.contrib.distributions.Normal(mu_gene, tf.ones(K))
+#log_gene_gauss = generative_gauss.log_prob(generative_gauss.sample(sample_shape=[S]))
+#logpx = tf.multiply( tf.to_float( p_z.sample(sample_shape=[S]) ), log_gene_gauss )
+
+
+# Update time_step and learning parameter
+update_counter = tf.assign( update_counter, tf.add(update_counter, tf.ones(1)) )
+rho = tf.minimum( 0.1, 1/tf.to_float(update_counter) )
+
+
+
+# Values for plot
+vps_mu_0 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_mu_1 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_mu_2 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_pi_0 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_pi_1 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_pi_2 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_z_0 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_z_1 = np.array(np.zeros(num_epochs), dtype=np.float32)
+vps_z_2 = np.array(np.zeros(num_epochs), dtype=np.float32)
+log_likelihood_p = np.array(np.zeros(num_epochs), dtype=np.float32)
+list_log_q = np.array(np.zeros(num_epochs), dtype=np.float32)
+elbo = np.array(np.zeros(num_epochs), dtype=np.float32)
+df = pd.DataFrame(index=[], columns=['class1', 'class2', 'class3'])
+count = 1
+sample_mu = q_mu.sample( sample_shape=[num_samples] )		# sampling 100 mu
+sample_pi = q_pi.sample( sample_shape=[num_samples] )		# sampling 100 pi
+sample_zq = q_z.sample( sample_shape=[num_samples] )		# sampling 100 z from q(z)
+sample_zp = p_z.sample( sample_shape=[num_samples] )		# sampling 100 z from p(z)
+
+
+# Visualize scalar
+with tf.name_scope('lambda_mu00'):
+    tf.summary.scalar('lambda_mu00', lambda_mu[0][0])
+
+
+# Merge graph
+sess = tf.Session()
+summary_writer = tf.summary.FileWriter('graph_BBVI', tf.get_default_graph())
+if not os.path.exists('graph_BBVI'):
+    os.makedirs('graph_BBVI')
+time.sleep(5)
+summary_op = tf.summary.merge_all()
+
+
+# Initiaize seesion
+init = tf.global_variables_initializer()
+#sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+sess.run(init)
+
+
+# Update
+#vps = [lambda_pi, lambda_mu, lambda_z]
+for epoch in range(num_epochs):
+    summary = sess.run(summary_op, feed_dict={X: x})
+    result = sess.run([lambda_pi, lambda_mu, lambda_z, sample_mu, sample_pi, sample_zq, sample_zp, log_p, log_q], feed_dict = {
+        X: x
+    })
+    
+    
+    # for debug
+    print(result[1])		# result[1] is lambda_mu
+    #print(result[3])
+    #print(test[0].eval(session=sess))
+    #print(grad_q_mu[0].eval(session=sess))
+    #print(grad_q_pi[0].eval(session=sess))
+    #print(grad_q_z[0].eval(session=sess))
+    #print(rho.eval(session=sess))
+    #print(element_wise_product_mu[0].eval(session=sess))
+    #print(log_gauss.eval(session=sess))
+    #print(log_q_pi[0].eval(session=sess))
+    #print(log_q_mu[0].eval(session=sess))
+    #print(log_q_z[0].eval(session=sess))
+    #print(log_q.eval(session=sess))
+    mu_0 = np.array(np.zeros(num_samples), dtype=np.float32)
+    mu_1 = np.array(np.zeros(num_samples), dtype=np.float32)
+    mu_2 = np.array(np.zeros(num_samples), dtype=np.float32)
+    pi_0 = np.array(np.ones(num_samples), dtype=np.float32)
+    pi_1 = np.array(np.ones(num_samples), dtype=np.float32)
+    pi_2 = np.array(np.ones(num_samples), dtype=np.float32)
+    zq_0 = 0
+    zq_1 = 0
+    zq_2 = 0
+    zp_0 = 0
+    zp_1 = 0
+    zp_2 = 0
+    #sample_mu = q_mu.sample( sample_shape=[num_samples] ).eval(session=sess)	# sampling 100 mu
+    #sample_pi = q_pi.sample( sample_shape=[num_samples] ).eval(session=sess)	# sampling 100 pi
+    #sample_zq = q_z.sample( sample_shape=[num_samples] ).eval(session=sess)		# sampling 100 z from q(z)
+    #sample_zp = p_z.sample( sample_shape=[num_samples] ).eval(session=sess)		# sampling 100 z from p(z)
+    for i in range(num_samples):
+        #mu_0[i] = sample_mu[i][0][0]
+        #mu_1[i] = sample_mu[i][0][1]
+        #mu_2[i] = sample_mu[i][0][2]
+        mu_0[i] = result[3][i][0][0]
+        mu_1[i] = result[3][i][0][1]
+        mu_2[i] = result[3][i][0][2]
+        #pi_0[i] = sample_pi[i][0]
+        #pi_1[i] = sample_pi[i][1]
+        #pi_2[i] = sample_pi[i][2]
+        pi_0[i] = result[4][i][0]
+        pi_1[i] = result[4][i][1]
+        pi_2[i] = result[4][i][2]
+        #zq_0 = zq_0 + sample_zq[0][i][0]
+        #zq_1 = zq_1 + sample_zq[0][i][1]
+        #zq_2 = zq_2 + sample_zq[0][i][2]
+        zq_0 = zq_0 + result[5][0][i][0]
+        zq_1 = zq_1 + result[5][0][i][1]
+        zq_2 = zq_2 + result[5][0][i][2]
+        #zp_0 = zp_0 + sample_zp[i][0]
+        #zp_1 = zp_1 + sample_zp[i][1]
+        #zp_2 = zp_2 + sample_zp[i][2]
+        zp_0 = zp_0 + result[6][i][0]
+        zp_1 = zp_1 + result[6][i][1]
+        zp_2 = zp_2 + result[6][i][2]
+    if epoch%100 == 0:
+        plt.figure(figsize=(10, 4))
+        plt.subplot(2, 1, 1)
+        plt.plot([-1.0, -1.0, -1.0], [-1.0, 0.0, 1.0], linewidth=2, linestyle="solid", color="b")
+        plt.plot([0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], linewidth=2, linestyle="solid", color="g")
+        plt.plot([1.0, 1.0, 1.0], [-1.0, 0.0, 1.0], linewidth=2, linestyle="solid", color="r")
+        plt.vlines(x=mu_0, ymin=-1, ymax=1, color="c", linestyle="dotted", label="mu_0")
+        plt.vlines(x=mu_1, ymin=-1, ymax=1, color="y", linestyle="dotted", label="mu_1")
+        plt.vlines(x=mu_2, ymin=-1, ymax=1, color="m", linestyle="dotted", label="mu_2")
+        #plt.scatter(mu_0, np.zeros(num_samples), color="b", label="mu_0", marker=",")
+        #plt.scatter(mu_1, np.zeros(num_samples), color="g", label="mu_1", marker="o")
+        #plt.scatter(mu_2, np.zeros(num_samples), color="r", label="mu_2", marker="^")
+        plt.scatter(x, np.zeros(np.size(x)), color="k", label="x_train", marker="x")
+        plt.ylim([0, 1])
+        plt.legend()
+        plt.subplot(2, 1, 2)
+        plt.plot([0.7, 0.7, 0.7], [-1.0, 0.0, 1.0], linewidth=2, linestyle="solid", color="b")
+        plt.plot([0.2, 0.2, 0.2], [-1.0, 0.0, 1.0], linewidth=2, linestyle="solid", color="g")
+        plt.plot([0.1, 0.1, 0.1], [-1.0, 0.0, 1.0], linewidth=2, linestyle="solid", color="r")
+        plt.vlines(x=pi_0, ymin=-1, ymax=1, color="c", linestyle="dotted", label="pi_0")
+        plt.vlines(x=pi_1, ymin=-1, ymax=1, color="y", linestyle="dotted", label="pi_1")
+        plt.vlines(x=pi_2, ymin=-1, ymax=1, color="m", linestyle="dotted", label="pi_2")
+        #plt.scatter(pi_0, np.zeros(num_samples), color="b", label="pi_0", marker=",")
+        #plt.scatter(pi_1, np.zeros(num_samples), color="g", label="pi_1", marker="o")
+        #plt.scatter(pi_2, np.zeros(num_samples), color="r", label="pi_2", marker="^")
+        plt.ylim([0, 1])
         plt.legend()
         plt.show()
-        df.to_csv("output_lambda_mu.csv", index=False)
+        #plt.savefig("mu and pi.png")
+        plt.subplot(2, 1, 1)
+        plt.scatter([1, 2, 3], [zq_0, zq_1, zq_2], label="z sampled q_z")		# [1,2,3] is numbers for each classes
+        plt.ylim([0, 100])
+        plt.legend()
+        plt.subplot(2, 1, 2)
+        plt.scatter([1, 2, 3], [zp_0, zp_1, zp_2], label="z sampled p_z")
+        plt.ylim([0, 100])
+        plt.legend()
+        plt.show()
+        #plt.savefig("z.png")
+        plt.clf()
+        plt.close()
+    vps_mu_0[epoch] = result[1][0][0]
+    vps_mu_1[epoch] = result[1][0][1]
+    vps_mu_2[epoch] = result[1][0][2]
+    vps_pi_0[epoch] = result[0][0]
+    vps_pi_1[epoch] = result[0][1]
+    vps_pi_2[epoch] = result[0][2]
+    vps_z_0[epoch] = result[2][0][0]		# 2nd index is data point
+    vps_z_1[epoch] = result[2][0][1]
+    vps_z_2[epoch] = result[2][0][2]
+    #log_likelihood_p[epoch] = np.mean(log_p.eval(session=sess))
+    log_likelihood_p[epoch] = np.mean(result[7])
+    #list_log_q[epoch] = np.mean(log_q.eval(session=sess))
+    list_log_q[epoch] = np.mean(result[8])
+    #elbo[epoch] = ELBO(log_p.eval(session=sess), log_q.eval(session=sess))
+    elbo[epoch] = ELBO(result[7], result[8])
+    se = pd.Series([vps_mu_0[epoch], vps_mu_1[epoch], vps_mu_2[epoch]], index=df.columns)
+    df = df.append(se, ignore_index=True)
+    log_writer = tf.summary.FileWriter('graph_BBVI')
+    log_writer.add_summary(summary, epoch)
+    print(count)
+    count = count + 1
+plt.figure(figsize=(10, 4))
+plt.subplot(2, 1, 1)
+plt.scatter(range(num_epochs), vps_mu_0, color="b", label="lambda_mu0")
+plt.scatter(range(num_epochs), vps_mu_1, color="g", label="lambda_mu1")
+plt.scatter(range(num_epochs), vps_mu_2, color="r", label="lambda_mu2")
+plt.xlim([0, num_epochs])
+#plt.ylim([0,1])
+plt.legend()
+plt.subplot(2, 1, 2)
+plt.scatter(range(num_epochs), vps_pi_0, color="b", label="lambda_pi0")
+plt.scatter(range(num_epochs), vps_pi_1, color="g", label="lambda_pi1")
+plt.scatter(range(num_epochs), vps_pi_2, color="r", label="lambda_pi2")
+plt.legend()
+plt.xlim([0, num_epochs])
+plt.show()
+#plt.savefig("lambda_mu and lambda_pi.png")
+plt.subplot(3, 1, 1)
+plt.scatter(range(num_epochs), vps_z_0, label="lambda_z10")
+plt.xlim([0, num_epochs])
+plt.legend()
+plt.subplot(3, 1, 2)
+plt.scatter(range(num_epochs), vps_z_1, label="lambda_z11")
+plt.xlim([0, num_epochs])
+plt.legend()
+plt.subplot(3, 1, 3)
+plt.scatter(range(num_epochs), vps_z_2, label="lambda_z12")
+plt.xlim([0, num_epochs])
+plt.legend()
+plt.show()
+#plt.savefig("lambda_z.png")
+plt.clf()
+plt.close()
+plt.plot(range(num_epochs), log_likelihood_p, label="log_p")
+plt.plot(range(num_epochs), list_log_q, label="log_q")
+plt.title("log_p and log_q")
+plt.legend()
+plt.show()
+plt.plot(range(num_epochs), elbo, label="ELBO")
+plt.title("ELBO")
+plt.legend()
+plt.show()
+plt.clf()
+plt.close()
+#plt.savefig("likelihood.png")
+df.to_csv("output_lambda_mu.csv", index=False)
     
     
     
-    # Inference variational parameters
-    # Update function for variational parameters
-    def VariationalParametersUpdater(self, rho):
-        s = 0
-        # Sampling and Logarithmic distributions
-        self.log_p_x = list( np.ones(self.S, dtype=np.float32) )
-        self.log_p_z = list( np.ones(self.S, dtype=np.float32) )
-        self.log_p_mu = list( np.ones(self.S, dtype=np.float32) )
-        self.log_p_pi = list( np.ones(self.S, dtype=np.float32) )
-        self.log_q_pi = list( np.ones(self.S, dtype=np.float32) )
-        self.log_q_mu = list( np.ones(self.S, dtype=np.float32) )
-        self.log_q_z = list( np.ones(self.S, dtype=np.float32) )
-        
-        
-        while(s < self.S):
-            # Update distributions
-            if(self.update_counter>0):
-                self.DistributionsUpdater()
-            
-            self.log_p_x[s] = tf.reduce_sum( self.logpx )
-            self.log_p_mu[s] = tf.reduce_sum( self.p_mu.log_prob(self.p_mu.sample(sample_shape=[1]))[0][0] )
-            self.log_p_pi[s] = self.p_pi.log_prob(self.p_pi.sample(sample_shape=[1]))[0]
-            
-            self.log_dirichlet = self.q_pi.log_prob(self.q_pi.sample(sample_shape=[1]))[0]
-            self.log_categorical = self.q_z.log_prob(self.q_z.sample(sample_shape=[1]))[0]
-            self.log_gauss = self.q_mu.log_prob(self.q_mu.sample(sample_shape=[1]))[0]
-            self.log_q_pi[s] = self.log_dirichlet
-            self.log_q_mu[s] = tf.reduce_sum( self.log_gauss )
-            self.log_q_z[s] = tf.reduce_sum( self.log_categorical )
-            
-            s = s + 1
-        
-        
-        
-        self.log_p = tf.add( tf.add( tf.add( tf.convert_to_tensor(self.log_p_x), tf.convert_to_tensor(self.log_p_z) ), tf.convert_to_tensor(self.log_p_pi) ), tf.convert_to_tensor(self.log_p_mu) ) 
-        self.log_q = tf.add( tf.add( tf.convert_to_tensor(self.log_q_z),  tf.convert_to_tensor(self.log_q_mu) ), tf.convert_to_tensor(self.log_q_pi) ) 
-        self.log_loss = tf.subtract( self.log_p, self.log_q )
-        
-        
-        # Gradient
-        self.grad_q_pi = tf.gradients(self.log_q, self.lambda_pi)
-        self.grad_q_mu = tf.gradients(self.log_q, self.lambda_mu)
-        self.grad_q_z = tf.gradients(self.log_q, self.lambda_z)
-        
-        
-        # Sample mean(Montecarlo Approximation)
-        self.element_wise_product_pi = []
-        self.element_wise_product_mu = []
-        self.element_wise_product_z = []
-        for j in range(self.S):
-            self.element_wise_product_pi.append(tf.multiply(self.grad_q_pi, self.log_loss[j]))
-            self.element_wise_product_mu.append(tf.multiply(self.grad_q_mu, self.log_loss[j]))
-            self.element_wise_product_z.append(tf.multiply(self.grad_q_z, self.log_loss[j]))
-        self.sample_mean_pi = tf.reduce_mean( self.element_wise_product_pi, axis = 0 )[0]
-        self.sample_mean_mu = tf.reduce_mean( self.element_wise_product_mu, axis = 0 )[0]
-        self.sample_mean_z = tf.reduce_mean( self.element_wise_product_z, axis = 0 )[0]
-        
-        
-        # Update variational parameters
-        self.lambda_pi = tf.add(self.lambda_pi, tf.multiply(rho, self.sample_mean_pi))
-        self.lambda_mu = tf.add(self.lambda_mu, tf.multiply(rho, self.sample_mean_mu))
-        self.lambda_z = tf.add(self.lambda_z, tf.multiply(rho, self.sample_mean_z))
-        
-        
-        self.update_counter = self.update_counter + 1
-        
-        
-        return [self.lambda_pi, self.lambda_mu, self.lambda_z]
-    
-    
-    
-    # Care Values
-    def Care(self):
-        lambda_pi = []
-        lambda_pi.append( tf.split(self.lambda_pi, self.K, 0) )
-        k=0
-        while(k < self.K):
-            lambda_pi[0][k] = tf.cond( tf.less_equal( lambda_pi[0][k][0], 0.0 ), lambda: tf.abs( lambda_pi[0][k] ), lambda: lambda_pi[0][k] )
-            k = k + 1
-        if(k == self.K):
-            self.lambda_pi = tf.concat(lambda_pi[0], 0)
-        
-        
-        lambda_z = []
-        lambda_z.append( tf.split(self.lambda_z, self.N, 0) )
-        n=0
-        while(n < self.N):
-            k=0
-            while(k < self.K):
-                lambda_z[0][n] = tf.cond( tf.less_equal( lambda_z[0][n][0][k], 0.0 ), lambda: tf.abs(lambda_z[0][n]), lambda: lambda_z[0][n] )
-                k = k + 1
-            #lambda_z[0][n] = tf.abs( lambda_z[0][n] )
-            lambda_z[0][n] = tf.cond( tf.not_equal( tf.reduce_sum( lambda_z[0][n] ), 1.0 ), lambda: self.ConstraintMethod( lambda_z[0][n] ), lambda: lambda_z[0][n] )
-            n = n + 1
-        if(n == self.N):
-            self.lambda_z = tf.concat(lambda_z[0], 0)
-        
-        
-        # Deal with nan and inf
-        for i in range(self.K):
-            self.lambda_pi = tf.cond( tf.equal( tf.is_inf(self.lambda_pi)[i], True ), lambda: self.prev_lambda_pi, lambda: self.lambda_pi )
-            self.lambda_pi = tf.cond( tf.equal( tf.is_nan(self.lambda_pi)[i], True ), lambda: self.prev_lambda_pi, lambda: self.lambda_pi )
-            self.lambda_mu = tf.cond( tf.equal( tf.is_inf(self.lambda_mu)[0][i], True ), lambda: self.prev_lambda_mu, lambda: self.lambda_mu )
-            self.lambda_mu = tf.cond( tf.equal( tf.is_nan(self.lambda_mu)[0][i], True ), lambda: self.prev_lambda_mu, lambda: self.lambda_mu )
-            self.lambda_z = tf.cond( tf.equal( tf.is_inf(self.lambda_z)[0][i], True ), lambda: self.prev_lambda_z, lambda: self.lambda_z )
-            self.lambda_z = tf.cond( tf.equal( tf.is_nan(self.lambda_z)[0][i], True ), lambda: self.prev_lambda_z, lambda: self.lambda_z )
-        
-        
-        # Previous lambda
-        self.prev_lambda_pi = self.lambda_pi
-        self.prev_lambda_mu = self.lambda_mu
-        self.prev_lambda_z = self.lambda_z
-        
-        
-        return [self.lambda_pi, self.lambda_mu, self.lambda_z]
-    
-    
-    
-    # Constraint Method
-    def ConstraintMethod(self, vector_subspace):
-        element_sum = tf.reduce_sum( vector_subspace )
-        vector_constrainted = tf.divide( vector_subspace, element_sum )
-        
-        
-        return vector_constrainted
-    
-    
-    
-# Main
-if __name__ == '__main__':
-    N = 100  	# number of data points
-    K = 3    	# number of components
-    D = 1     	# dimensionality of data
-    S = 10		# sample
-    alpha = 0.0
-    beta = 2.0
-    gamma = 0.1
-    
-    sample_x1 = nprand.normal(alpha, beta, int(N*0.7))		# Mixture ratio pi_1=0.7
-    sample_x2 = nprand.normal(alpha+2.0, beta, int(N*0.2))	# Mixture ratio pi_2=0.2
-    sample_x3 = nprand.normal(alpha-2.0, beta, int(N*0.1))	# Mixture ratio pi_3=0.1
-    x = np.reshape( np.concatenate( [np.concatenate([sample_x1, sample_x2]), sample_x3] ), (N, D) )
-    
-    x_mean = np.mean(x)
-    
-    sfg = BasicBBVI(N, K, D, S, x_mean, beta, gamma)
-    sfg.Fit(x)
-    
+
+
+
+## Main
+#if __name__ == '__main__':
+#    N = 100  	# number of data points
+#    K = 3    	# number of components
+#    D = 1     	# dimensionality of data
+#    S = 10		# sample
+#    alpha = 0.0
+#    beta = np.sqrt(0.1)
+#    gamma = 0.1
+#    rho = 0.1
+#    
+#    sample_x1 = nprand.normal(alpha, beta, int(float(N)*0.7))		# Mixture ratio pi_1=0.7
+#    sample_x2 = nprand.normal(alpha+1.0, beta, int(float(N)*0.2))	# Mixture ratio pi_2=0.2
+#    sample_x3 = nprand.normal(alpha-1.0, beta, int(float(N)*0.1))	# Mixture ratio pi_3=0.1
+#    x = np.reshape( np.concatenate( [np.concatenate([sample_x1, sample_x2]), sample_x3] ), (N, D) )
+#    
+#    x_mean = np.mean(x)
+#    
+#    Init(N, K, D, S, x_mean, beta, gamma)
+#    Fit(x)
+#    
 
 
 
