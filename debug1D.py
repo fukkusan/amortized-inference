@@ -36,7 +36,7 @@ K = 3    	# number of components
 D = 1     	# dimensionality of data
 S = 10		# sample
 _alpha = 0.0
-_beta = np.sqrt(0.1)
+_beta = np.sqrt(10.0)
 _gamma = 1.0
 
 input_data = inp.Input()
@@ -92,8 +92,10 @@ print(q_z)
 print('* Generative model *')
 p_pi = tf.contrib.distributions.Dirichlet(gamma, name='p_pi' )
 p_mu = tf.contrib.distributions.Normal(alpha_mean, alpha_var, name='p_mu' )
-pi_gene = tf.cond( tf.greater(update_counter[0], 0.0), lambda: q_pi.sample(sample_shape=[1])[0], lambda: p_pi.sample(sample_shape=[1])[0], name='pi_gene' )
-mu_gene = tf.cond( tf.greater(update_counter[0], 0.0), lambda: q_mu.sample(sample_shape=[1])[0], lambda: p_mu.sample(sample_shape=[1])[0], name='mu_gene' )
+#pi_gene = tf.cond( tf.greater(update_counter[0], 0.0), lambda: q_pi.sample(sample_shape=[1])[0], lambda: p_pi.sample(sample_shape=[1])[0], name='pi_gene' )
+pi_gene = tf.cond( tf.greater(update_counter[0], 1.0), lambda: q_pi.sample(sample_shape=[1])[0], lambda: p_pi.sample(sample_shape=[1])[0], name='pi_gene' )
+#mu_gene = tf.cond( tf.greater(update_counter[0], 0.0), lambda: q_mu.sample(sample_shape=[1])[0], lambda: p_mu.sample(sample_shape=[1])[0], name='mu_gene' )
+mu_gene = tf.cond( tf.greater(update_counter[0], 1.0), lambda: q_mu.sample(sample_shape=[1])[0], lambda: p_mu.sample(sample_shape=[1])[0], name='mu_gene' )
 p_z = tf.contrib.distributions.OneHotCategorical( pi_gene, name='p_z'  )
 generative_gauss = tf.contrib.distributions.Normal(mu_gene, tf.ones(K), name='generative_gauss' )
 print(p_pi)
@@ -240,7 +242,7 @@ print(lambda_mu_update)
 print(lambda_z_update)
 
 # Update time_step and learning parameter
-update_counter = tf.assign( update_counter, tf.add(update_counter, tf.ones(1)) )
+update_counter_op = tf.assign( update_counter, tf.add(update_counter, tf.ones(1)) )
 #rho = tf.minimum( 0.1, 1/tf.to_float(update_counter) )
 
 # Values for plot (not use for Update)
@@ -252,6 +254,13 @@ print(sample_mu)
 print(sample_pi)
 print(sample_zq)
 print(sample_zp)
+tf.summary.histogram('sample_mu', sample_mu)
+
+#plot_x = tf.Variable(tf.identity( X ), name='plot_x')
+#print(plot_x)
+#tf.summary.histogram('plot_x', plot_x)
+
+summary = tf.summary.merge_all()
 
 #***************************************
 #* [Run]
@@ -260,20 +269,27 @@ print('***** Session Init *****')
 
 # Initiaize seesion
 sess = tf.Session()
+#summary_writer = tf.summary.FileWriter('graph_BBVI', sess.graph)
+summary_writer = tf.summary.FileWriter('graph_BBVI', tf.get_default_graph())
 init = tf.global_variables_initializer()
 sess.run(init)
 
 print('***** Run *****')
 
+elbo_history = np.array(np.zeros(num_epochs), dtype=np.float32)
+
 # Update
 for epoch in range(num_epochs):
-    result = sess.run([lambda_pi_update, lambda_mu_update, lambda_z_update, update_counter, sample_mu, sample_pi, sample_zq, sample_zp], feed_dict = {
+    result = sess.run([lambda_pi_update, lambda_mu_update, lambda_z_update, update_counter_op, log_p, log_q, sample_mu, sample_pi, sample_zq, sample_zp, summary], feed_dict = {
         X: x
     })
     
     # for debug
+    elbo_history[epoch] = ELBO(result[4], result[5])
     print(result[1])		# result[1] is lambda_mu
+    summary_writer.add_summary(result[-1], epoch)
+    #summary_writer.add_summary(result[-2], epoch)
 
-summary_writer = tf.summary.FileWriter('graph_BBVI', tf.get_default_graph())
+print(elbo_history)
 
 #end
