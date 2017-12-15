@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import Input_data_for_2-dim_GMM as inp
+import Input_data_for_2_dim_GMM as inp
 import gc
 
 
