@@ -6,11 +6,11 @@ from matplotlib import pyplot as plt
 
 # constant
 K = 3
-Step = 2
+Step = 100
 
 
 # read csv
-dataset_lambda_nu = pd.read_csv("res_lambda_nu.csv")
+dataset_lambda_nu = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_lambda_nu.csv")
 
 lambda_nu_cl1_r = []
 lambda_nu_cl1_r.append( dataset_lambda_nu['lambda_nu_class1'] )
@@ -60,7 +60,7 @@ for epoch in range(Step):
     
     plt.suptitle("degree of freedom")
     
-    plt.pause(1.2)
+    plt.pause(0.2)
 
 
 

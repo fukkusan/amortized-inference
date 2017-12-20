@@ -5,13 +5,14 @@ from matplotlib import pyplot as plt
 
 
 # constant
-num_samples = 2
-N = 10
+num_samples = 10
+num_epochs = 100
+N = 100
 K = 3
 
 
 # read csv
-dataset_z = pd.read_csv("res_z.csv")
+dataset_z = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_z.csv")
 
 z_cl1_r = []
 z_cl1_r.append( dataset_z['z_class1'] )
@@ -81,7 +82,7 @@ print(z_cl3_pile)
 # hist
 fig = plt.figure()
 ax = plt.axes()
-for epoch in range(2):
+for epoch in range(num_epochs):
     ax.cla()
     plt.bar( [1, 2, 3], [ z_cl1_pile[epoch], z_cl2_pile[epoch], z_cl3_pile[epoch] ], width = 0.5, align='center' )
     plt.xticks([1, 2, 3], ['class1', 'class2', 'class3'])
@@ -90,5 +91,5 @@ for epoch in range(2):
     plt.title("latent variables")
     plt.ylabel("sum of N's latent variables")
     
-    plt.pause(1.0)
+    plt.pause(0.2)
 

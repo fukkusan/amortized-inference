@@ -5,12 +5,13 @@ from matplotlib import pyplot as plt
 
 
 # constant
-num_samples = 2
+num_samples = 10
+num_epochs = 100
 K = 3
 
 
 # read csv
-dataset_pi = pd.read_csv("res_pi.csv")
+dataset_pi = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_pi.csv")
 
 pi_cl1_r = []
 pi_cl1_r.append( dataset_pi['pi_class1'] )
@@ -53,7 +54,7 @@ while(start_pi_cl3 < len_pi_cl3_r):
 # plot
 fig = plt.figure()
 ax = plt.axes()
-for epoch in range(2):
+for epoch in range(num_epochs):
     ax.cla()
     plt.bar([1, 2, 3], [ pi_cl1[epoch], pi_cl2[epoch], pi_cl3[epoch] ], width=0.5 )
     plt.xticks([1, 2, 3], ['class1', 'class2', 'class3'])
@@ -62,7 +63,7 @@ for epoch in range(2):
     plt.ylabel("Mixing ratio")
     plt.ylim([0, 1])
     
-    plt.pause(2.0)
+    plt.pause(0.2)
 
 
 

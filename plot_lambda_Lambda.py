@@ -6,11 +6,11 @@ from matplotlib import pyplot as plt
 
 # constant
 K = 3
-Step = 2
+Step = 100
 
 
 # read csv
-dataset_lambda_Lambda = pd.read_csv("res_lambda_Lambda.csv")
+dataset_lambda_Lambda = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_lambda_Lambda.csv")
 
 lambda_Lambda_cl1_el11_r = []
 lambda_Lambda_cl1_el11_r.append( dataset_lambda_Lambda['lambda_Lambda_class1_element11'] )
@@ -122,7 +122,7 @@ for epoch in range(Step):
     plt.suptitle("Eigen values of lambda_Lambda")
     
     
-    plt.pause(1.2)
+    plt.pause(0.2)
 plt.close()
 
 

@@ -2,15 +2,17 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import Gaussian_plot as gp
+import os
 
 
 
 # constant
-num_samples = 2
+num_samples = 10
+num_epochs = 100
 
 
 # read csv
-dataset_mu_and_Sigma = pd.read_csv("res_mu_and_Sigma.csv")
+dataset_mu_and_Sigma = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_mu_and_Sigma.csv")
 dataset_observation = pd.read_csv("gmm_data.csv")
 
 mu_cl1_el1 = []
@@ -179,7 +181,7 @@ observation = np.array(observation)
 # plot
 fig = plt.figure()
 ax = plt.axes()
-for epoch in range(2):
+for epoch in range(num_epochs):
     ax.cla()
     #start = 0
     gp.plot_observations(ax, observation, "k")
@@ -198,7 +200,7 @@ for epoch in range(2):
     plt.xlabel("x1-axis")
     plt.ylabel("x2-axis")
     
-    plt.pause(2.0)
+    plt.pause(0.2)
 
 
 

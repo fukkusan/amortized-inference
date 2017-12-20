@@ -6,11 +6,11 @@ from matplotlib import pyplot as plt
 
 # constant
 K = 3
-Step = 2
+Step = 100
 
 
 # read csv
-dataset_lambda_pi = pd.read_csv("res_lambda_pi.csv")
+dataset_lambda_pi = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_lambda_pi.csv")
 
 lambda_pi_cl1_r = []
 lambda_pi_cl1_r.append( dataset_lambda_pi['lambda_pi_class1'] )
@@ -58,7 +58,7 @@ for epoch in range(Step):
     
     plt.suptitle("dirichlet parameter")
     
-    plt.pause(2.2)
+    plt.pause(0.2)
 
 
 

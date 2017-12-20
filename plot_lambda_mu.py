@@ -6,13 +6,12 @@ from matplotlib import pyplot as plt
 
 # constant
 K = 3
-Step = 2
+Step = 100
 
 
 
 # read csv
-dataset_lambda_mu = pd.read_csv("res_lambda_mu.csv")
-dataset_lambda_muLambda = pd.read_csv("res_lambda_muLambda.csv")
+dataset_lambda_mu = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_lambda_mu.csv")
 
 
 lambda_mu_cl1_el1 = []
@@ -63,7 +62,7 @@ lambda_mu_cl3_ndarray = np.array(lambda_mu_cl3)
 # plot
 fig = plt.figure()
 ax = plt.axes()
-for epoch in range(2):
+for epoch in range(Step):
     ax.cla()
     plt.suptitle("mean parameter(lambda_mu) of Gaussian")
     plt.subplot(K, 1, 1)
@@ -99,7 +98,7 @@ for epoch in range(2):
     plt.xlabel("epoch")
     plt.legend()
     
-    plt.pause(1.2)
+    plt.pause(0.2)
 
 
 

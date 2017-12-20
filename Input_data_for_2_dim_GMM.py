@@ -7,7 +7,7 @@ import pandas as pd
 
 def Input():
     # Input data
-    N = 10  	# number of data points
+    N = 100  	# number of data points
     D = 2     	# dimensionality of data
     alpha = 0.0
     beta = np.sqrt(0.1)
@@ -19,24 +19,20 @@ def Input():
     x = np.reshape( np.concatenate( [np.concatenate([sample_x1, sample_x2]), sample_x3] ), (N, D) )
 
     x_mean = np.mean(x)
+    
+    
+    data_frame = pd.DataFrame( index=[], columns=['element1', 'element2'] )		# null data frame
+    for i in range(N):
+        plt.scatter(x[i][0], x[i][1], color="r")
+        series = pd.Series( [x[i][0], x[i][1]], index=data_frame.columns )
+        data_frame = data_frame.append( series, ignore_index=True )
+    plt.pause(1.0)
+    data_frame.to_csv("gmm_data.csv", index=False)
 
 
     return [x, x_mean]
 
 
 
-## Main (for debug)
-#if __name__ == '__main__':
-#    N = 10
-#    x = Input()[0]
-#    #print(x)
-#    #print(x.shape)
-#    data_frame = pd.DataFrame( index=[], columns=['element1', 'element2'] )		# null data frame
-#    for i in range(N):
-#        plt.scatter(x[i][0], x[i][1], color="r")
-#        series = pd.Series( [x[i][0], x[i][1]], index=data_frame.columns )
-#        data_frame = data_frame.append( series, ignore_index=True )
-#    plt.show()
-#    data_frame.to_csv("gmm_data.csv", index=False)
 
 

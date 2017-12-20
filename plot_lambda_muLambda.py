@@ -1,17 +1,18 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+import Gaussian_plot as gp
 
 
 
 # constant
 K = 3
-Step = 2
+Step = 100
 
 
 
 # read csv
-dataset_lambda_muLambda = pd.read_csv("res_lambda_muLambda.csv")
+dataset_lambda_muLambda = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_lambda_muLambda.csv")
 
 
 lambda_muLambda_cl1_el11 = []
@@ -125,7 +126,7 @@ for epoch in range(Step):
     plt.suptitle("Eigen values of lambda_muLambda")
     
     
-    plt.pause(1.2)
+    plt.pause(0.2)
 plt.close()
 
 

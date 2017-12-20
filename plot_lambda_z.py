@@ -5,13 +5,13 @@ from matplotlib import pyplot as plt
 
 
 # constant
-N = 10
+N = 100
 K = 3
-Step = 2
+Step = 100
 
 
 # read csv
-dataset_lambda_z = pd.read_csv("res_lambda_z.csv")
+dataset_lambda_z = pd.read_csv("C:/work/Basic_BBVI_for_2-dim_GMM/csv/ver2.1.3_N100S10epoch100sample10/res_lambda_z.csv")
 
 lambda_z_cl1_r = []
 lambda_z_cl1_r.append(dataset_lambda_z['lambda_z_class1'])
@@ -91,7 +91,7 @@ for n in range(N):
         
         plt.suptitle("categorical parameter")
         
-        plt.pause(1.2)
+        plt.pause(0.2)
         
 
 
