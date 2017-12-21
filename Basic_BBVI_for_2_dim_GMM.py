@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import Input_data_for_2_dim_GMM as inp
+import Input_data_for_2dim_GMM as inp
 import calc_ELBO as cal_elbo
 import gc
 
@@ -142,7 +142,7 @@ with tf.name_scope("GenerativeModel"):
     mu_gene = sample_q_mu_ass
     #covariance_generative_gauss = tf.cond(tf.equal(pred_counter, 1.0), lambda: tf.matrix_inverse(sample_q_Lambda_ass), lambda: tf.matrix_inverse(p_Lambda.sample(sample_shape=[S])))
     covariance_generative_gauss = tf.matrix_inverse(sample_q_Lambda_ass)
-    p_z = tf.contrib.distributions.OneHotCategorical(sample_q_pi_ass)  # [S,N,K] sample_q_pi_ass
+    p_z = tf.contrib.distributions.OneHotCategorical(pi_gene)  # [S,K] sample_q_pi_ass
     generative_gauss = tf.contrib.distributions.MultivariateNormalFullCovariance(loc=mu_gene, covariance_matrix=covariance_generative_gauss)    # [S, N, K, D]
 
 # * Construct calculation graph for updating variational parameters *
@@ -156,7 +156,7 @@ with tf.name_scope('LogDistributions'):
     logpx = tf.reduce_sum(tf.multiply(tf.to_float(sample_q_z_ass), log_gene_gauss_trans), axis=2, name='logpx')
     log_p_x = tf.reduce_sum(logpx, axis=1, name='log_p_x')
     log_p_pi = p_pi.log_prob(sample_q_pi_ass, name='log_p_pi')
-    sample_q_z_ass_re = tf.reshape(sample_q_z_ass, [N, S, K])
+    sample_q_z_ass_re = tf.transpose(sample_q_z_ass, perm=[1, 0, 2])
     _log_p_z = p_z.log_prob(sample_q_z_ass_re)
     _log_p_z_trans = tf.transpose(_log_p_z, perm=[1, 0])
     log_p_z = tf.reduce_sum(_log_p_z_trans, axis=1, name='log_p_z')
